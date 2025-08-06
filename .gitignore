@@ -1,5 +1,5 @@
-/options.py
-/seen_old.json
-/temp.json
-/workbase.db
-/__pycache__
+*
+
+!*.py
+!.gitignore
+!README.md
