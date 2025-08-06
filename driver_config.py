@@ -1,18 +1,15 @@
 import os
 import json
-from selenium import webdriver
+import random
+import free_proxy_parser
 from fake_useragent import UserAgent
 from fake_useragent import FakeUserAgentError
-from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
 from webdriver_manager.firefox import GeckoDriverManager
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.common.proxy import Proxy, ProxyType
 
-# 77.238.103.98:8080
-# 185.88.101.182:8085
+PROXY = 'http://user314205:sjxncy@45.145.3.130:8492'
 
 # Конфигурация драйвера
 class DriverConfiguration:
@@ -24,16 +21,29 @@ class DriverConfiguration:
         except FakeUserAgentError:
             ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36'
         self.options = Options()
-        self.options.add_argument(f'user-agent={ua}')
-        self.options.add_argument('--headless')
+        self.options.add_argument(f'--user-agent={ua}')
+        # self.options.add_argument('--headless=new')
         self.options.add_argument('--no-sandbox')
         self.options.add_argument('--disable-dev-shm-usage')
         self.options.add_argument('--disable-web-security')
         self.options.add_argument('--allow-running-insecure-content')
         self.options.add_argument('--disable-webrtc')
+        self.options.add_argument('--ignore-certificate-errors')
 
+        # Free-proxy
+        # proxy_list    = free_proxy_parser.parse_proxy()
+        # proxy_address = proxy_list[random.randint(0, len(proxy_list) - 1)]
+
+        # self.proxy = {
+        #     'proxy': {
+        #         'http': f'http://{proxy_address}',
+        #         'https': f'http://{proxy_address}'
+        #     }
+        # }
+        # self.options.add_argument(f'--proxy-server=http://{proxy_address}')
+        # self.proxy = {}
         # Service
-        self.service = Service(GeckoDriverManager.install())
+        self.service = Service(GeckoDriverManager().install())
 
     
     def get_options(self):
@@ -41,6 +51,15 @@ class DriverConfiguration:
 
     def get_service(self):
         return self.service
+
+    def get_proxy(self):
+        return self.proxy
+
+
+
+
+
+
 
     #TODO: Модификация для прокси с аутентификацией
     def create_firefox_proxy_extension(proxy_host, proxy_port, proxy_user, proxy_pass):

@@ -1,9 +1,12 @@
-from loguru import logger
-from driver_config import *
 import time
 import json
-import re
-import os
+from loguru import logger
+from driver_config import *
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
 URL = 'https://www.avito.ru/moskva_i_mo/kvartiry/prodam?context=&s=104'
 
@@ -11,9 +14,7 @@ class AvitoParser:
     def __init__(self):
         self.session_apartments = []
         driver_config = DriverConfiguration()
-        self.driver = webdriver.Firefox(options=driver_config.get_options(), 
-                                        service=driver_config.get_service()
-                                        )
+        self.driver = webdriver.Firefox(options=driver_config.get_options(), service=driver_config.get_service())
         
         try:
             with open('seen.json', 'r') as file_seen:
@@ -25,11 +26,10 @@ class AvitoParser:
         self.driver.get(url)
 
         if 'Доступ ограничен' in self.driver.title:
-            logger.error('Доступ ограничен. Нужен прокси')
-        else:
-            # logger.info('Доступ разрешён')
-            pass
-
+            logger.debug('Доступ ограничен. Использую прокси')
+            self.change_proxy()
+            self.get_url(url)
+        
     def save_session(self):
         self.driver.quit()
         with open('seen.json', 'w+') as f:
@@ -63,18 +63,18 @@ class AvitoParser:
         
         for item in items:
             try:
+                # Парсинг данных
+                title   = item.find_element(By.CSS_SELECTOR, '[itemprop="name"]').text
+                price   = item.find_element(By.CSS_SELECTOR, '[itemprop="price"]').get_attribute('content')
+                address = item.find_element(By.CSS_SELECTOR, '[data-marker="item-address"]').text
+                link    = item.find_element(By.CSS_SELECTOR, '[data-marker="item-title"]').get_attribute('href')
+
                 # Проверка на повторный просмотр объявления
                 id = item.get_attribute('data-item-id')
                 if (id in self.seen_apartments):
                     break
                 else:
                     self.seen_apartments.add(id)
-
-                # Парсинг данных
-                title   = item.find_element(By.CSS_SELECTOR, '[itemprop="name"]').text
-                price   = item.find_element(By.CSS_SELECTOR, '[itemprop="price"]').get_attribute('content')
-                address = item.find_element(By.CSS_SELECTOR, '[data-marker="item-address"]').text
-                link    = item.find_element(By.CSS_SELECTOR, '[data-marker="item-title"]').get_attribute('href')
 
                 self.session_apartments.append({
                     'title': title,
@@ -91,3 +91,8 @@ class AvitoParser:
             return next_page_button.get_attribute('href')
         except NoSuchElementException as e:
             return False
+
+    def change_proxy(self):
+        self.driver.quit()
+        driver_config = DriverConfiguration()
+        self.driver = webdriver.Firefox(options=driver_config.get_options(), service=driver_config.get_service())
