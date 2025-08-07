@@ -11,6 +11,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 URL = 'https://www.avito.ru/moskva_i_mo/kvartiry/prodam?context=&s=104'
 
 class AvitoParser:
+    """Класс парсера Авито."""
     def __init__(self):
         self.session_apartments = []
         driver_config = DriverConfiguration()
@@ -22,23 +23,50 @@ class AvitoParser:
         except FileNotFoundError:
             self.seen_apartments = set()
 
-    def get_url(self, url: str):
+    def __get_url(self, url: str):
         self.driver.get(url)
 
         if 'Доступ ограничен' in self.driver.title:
-            logger.debug('Доступ ограничен. Использую прокси')
-            self.change_proxy()
-            self.get_url(url)
+            logger.debug('Доступ ограничен.\nДелаю паузу на 5 мин и пробую снова')
+            time.sleep(300)
+            self.__get_url(url)
         
-    def save_session(self):
+    def __save_parsing_session(self):
         self.driver.quit()
         with open('seen.json', 'w+') as f:
             json.dump(list(self.seen_apartments), f)
         with open('temp.json', 'w+') as file:
             json.dump(self.session_apartments, file)
 
+    def parse_avito(self, url):
+        error_counter = 0
+        page_n = 1
+        
+        while True:
 
-    def parse_page(self, page_n):
+            if (url is False):
+                logger.success('Все объявления просмотрены!')
+                break
+            
+            try:
+                url = self.__parse_avito_page(url, page_n)
+                logger.info('Пауза. Исключаю блокировку IP из-за частых запросов...')
+                error_counter = 0
+                page_n += 1
+                time.sleep(5)
+            except Exception as e:
+                logger.debug('Ошибка. Работа будет продолжена через 20 секунд.\nЕсли ошибка повторится 3 раза подряд, программа завершится автоматически')
+                error_counter += 1
+                
+                if (error_counter >= 3):
+                    break
+                time.sleep(20)
+        
+        self.__save_parsing_session()
+
+    def __parse_avito_page(self, url, page_n):
+
+        self.__get_url(url)
 
         logger.info(f"Обработка страницы {page_n}...")
         
@@ -91,8 +119,3 @@ class AvitoParser:
             return next_page_button.get_attribute('href')
         except NoSuchElementException as e:
             return False
-
-    def change_proxy(self):
-        self.driver.quit()
-        driver_config = DriverConfiguration()
-        self.driver = webdriver.Firefox(options=driver_config.get_options(), service=driver_config.get_service())
