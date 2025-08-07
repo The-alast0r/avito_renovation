@@ -27,5 +27,3 @@ def parse_proxy():
         json.dump(proxy_list, file)
 
     return proxy_list
-
-parse_proxy()
