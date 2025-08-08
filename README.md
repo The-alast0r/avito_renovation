@@ -31,3 +31,7 @@ cd avito-renovation
 
 # Установка зависимостей
 pip install -r requirements.txt
+
+### Настройка Telegram-бота
+1. Создайте бота в @BotFather
+2. Получите token бота и id чата с ним
