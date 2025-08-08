@@ -1,33 +1,45 @@
 import time
 import json
+from dbhandler import *
+import free_proxy_parser
 from loguru import logger
-from seleniumbase import SB
+from seleniumbase import Driver
+from bot_alarmer import BotAlarmer
+from selenium.common.exceptions import *
 from selenium.webdriver.common.by import By
+from address_prettifier import AddressPrettifier
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
 class AvitoParser:
-    def __init__(self):
+    def __init__(self, private_proxy, free_proxy, renovation_data, debug_mode=False):
         self.session_apartments = []
-        self.use_proxy          = False
+        self.private_proxy      = private_proxy
+        self.free_proxy         = free_proxy
+        self.debug_mode         = debug_mode
+        self.renovation_data    = renovation_data
 
-        try:
-            with open('proxy.ini', 'r') as file_proxy:
-                settings_lines = file_proxy.read().splitlines()
-            proxy_settings = {obj : state for obj, state in zip([x.split('=')[0] for x in settings_lines], [x.split('=')[1] for x in settings_lines])}
+        if (self.private_proxy and not free_proxy):
+            try:
+                with open('proxy.ini', 'r') as file_proxy:
+                    settings_lines = file_proxy.read().splitlines()
+                proxy_settings = {obj : state for obj, state in zip([x.split('=')[0] for x in settings_lines], [x.split('=')[1] for x in settings_lines])}
 
-            if (proxy_settings['username'] == '' or proxy_settings['password'] == '' or proxy_settings['host'] == '' or proxy_settings['port'] == ''):
-                logger.debug('Не обнаружил прокси. Работаю без использования прокси-сервера')
-            else:
-                proxy_string = f'{proxy_settings['username']}:{proxy_settings['password']}@{proxy_settings['host']}:{proxy_settings['port']}'
-                self.proxy   = proxy_string
-                logger.info(f'Использую прокси: {proxy_string}')
-                self.use_proxy = True
-                
-        except FileNotFoundError:
-            logger.error('Отсутствует файл конфигурации прокси!')
-            return
+                if (proxy_settings['username'] == '' or proxy_settings['password'] == '' or proxy_settings['host'] == '' or proxy_settings['port'] == ''):
+                    logger.debug('[WARNING] Не обнаружил прокси. Работаю без использования прокси-сервера')
+                else:
+                    proxy_string = f'{proxy_settings['username']}:{proxy_settings['password']}@{proxy_settings['host']}:{proxy_settings['port']}'
+                    self.proxy   = proxy_string
+                    logger.info(f'[INFO] Использую прокси: {proxy_string}')
+                    
+            except FileNotFoundError:
+                logger.debug('[WARNING] Отсутствует файл конфигурации прокси!\nРаботаю без использования прокси-сервера...')
+
+        elif (self.free_proxy):
+            self.proxy = free_proxy_parser.parse_proxy()
+
+        else:
+            logger.debug('[WARNING] Работаю без прокси. Есть риск блокировки IP!')
 
         try:
             with open('seen.json', 'r') as file_seen:
@@ -35,53 +47,61 @@ class AvitoParser:
         except FileNotFoundError:
             self.seen_apartments = set()
 
+        self.driver = Driver(uc=True,
+                            headless2=False if self.debug_mode else True,
+                            browser='chrome',
+                            proxy=self.proxy if self.private_proxy or self.free_proxy else None,
+                            agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36')
+
     def __get_url(self, url: str):
         self.driver.get(url)
-        
+        attempt = 0
+
+        while 'Доступ ограничен' in self.driver.get_title():
+            logger.debug('[WARNING] Avito заблокировал IP. Рекомендую сменить прокси, либо зайти в DEBUG MODE и пройти капчу')
+            attempt+=1
+            
+            if (attempt >= 3):
+                logger.error('[ERROR] Завершаю работу из-за блокировки IP')
+                return False
+
+            time.sleep(15)
+
+        return True
+
     def __save_session(self):
-        self.driver.quit()
         with open('seen.json', 'w+') as f:
             json.dump(list(self.seen_apartments), f)
-        with open('temp.json', 'w+') as file:
-            json.dump(self.session_apartments, file)
 
-    def start_parsing(self, begin_url):
+        db_handler = DBHandler('parsed.db')
+        db_handler.save_parsed_apartments(self.session_apartments)
+
+    def start_parsing(self, begin_url, callback):
+        self.stop_parsing = False
         page_n = 1
         url = begin_url
-        error_counter = 0
+        prettifier = AddressPrettifier('avito')
+        alarmer    = BotAlarmer()
 
-        with SB(uc=True,
-                headless=False,
-                browser='chrome',
-                proxy=self.proxy if self.use_proxy else None
-            ) as self.driver:
+        while True:
 
-            while True:
+            if (self.stop_parsing or url is False):
+                logger.success('[SUCCESS] Все объявления просмотрены!')
+                break
 
-                if (url is False):
-                    logger.success('Все объявления просмотрены!')
-                    break
-
-                try:
-                    url = self.__parse_page(url, page_n)
-                    logger.info('Пауза. Исключаю блокировку IP из-за частых запросов...')
-                    error_counter = 0
-                    page_n += 1
-                    time.sleep(5)
-                except Exception as e:
-                    logger.debug('Ошибка. Работа будет продолжена через 20 секунд.\nЕсли ошибка повторится 3 раза подряд, программа завершится автоматически')
-                    error_counter += 1
-
-                    if (error_counter >= 3):
-                        break
-                    time.sleep(20)
+            url = self.__parse_page(url, page_n, prettifier, alarmer)
+            logger.info('[INFO] Пауза. Исключаю блокировку IP из-за частых запросов...')
+            page_n += 1
+            time.sleep(5)
                     
-            self.__save_session()
-        
+        self.__save_session()
 
-    def __parse_page(self, url, page_n):
+        callback(True)
 
-        self.__get_url(url)
+    def __parse_page(self, url, page_n, prettifier, alarmer):
+
+        if (not self.__get_url(url)):
+            return False
 
         logger.info(f"Обработка страницы {page_n}...")
         
@@ -89,7 +109,7 @@ class AvitoParser:
         try:
             WebDriverWait(self.driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, '[data-marker="item"]')))
         except TimeoutException as error:
-            logger.error(f"Не удалось соединиться с сайтом avito!\n{error}")
+            logger.error(f"[ERROR] Не удалось соединиться с сайтом avito!\n{error}")
             
         # Прокрутка для загрузки всех элементов
         last_height = self.driver.execute_script("return document.body.scrollHeight")
@@ -115,22 +135,26 @@ class AvitoParser:
                 # Проверка на повторный просмотр объявления
                 id = item.get_attribute('data-item-id')
                 if (id in self.seen_apartments):
+                    self.stop_parsing = True
                     break
                 else:
                     self.seen_apartments.add(id)
 
+                prettifier.make_address_pretty(address)
+                if (prettifier.pretty_address in self.renovation_data):
+                    alarmer.send_message(prettifier.pretty_address, link)             
                 self.session_apartments.append({
                     'title': title,
                     'price': price,
-                    'address': address,
+                    'address': prettifier.pretty_address,
                     'link': link
                 })
             except Exception as e:
-                logger.debug('Ошибка при парсинге объявления. Возможно парсер схавал предложку\nРабота будет продолжена')
+                logger.debug('[WARNING] Ошибка при парсинге объявления. Возможно парсер схавал предложку. Работа будет продолжена')
                 continue
         
         try:
             next_page_button = self.driver.find_element(By.CSS_SELECTOR, '[data-marker="pagination-button/nextPage"]')
             return next_page_button.get_attribute('href')
-        except NoSuchElementException as e:
+        except Exception as e:
             return False

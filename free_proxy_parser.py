@@ -1,4 +1,4 @@
-import json
+import random
 import requests
 from bs4 import BeautifulSoup
 
@@ -23,7 +23,4 @@ def parse_proxy():
         if ('Russian Federation' in columns[3].text):
             proxy_list.append(f'{columns[0].text.strip()}:{columns[1].text.strip()}')
     
-    with open('proxy_list.json', 'w+') as file:
-        json.dump(proxy_list, file)
-
-    return proxy_list
+    return proxy_list[random.randint(0, len(proxy_list) - 1)]
