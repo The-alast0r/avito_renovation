@@ -1,7 +1,7 @@
 # 🔍 Avito Реновации - проверка жилья в программе реновации Москвы
 
 [![Python Version](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
-[![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue)](https://telegram.org)
+[![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue)](https://t.me/junior_lair)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 **Инструмент для автоматического поиска объявлений на Avito о продаже квартир, попадающих под программу реновации Москвы.**   
@@ -30,9 +30,14 @@ cd avito-renovation
 
 # Установка зависимостей
 pip install -r requirements.txt
+
+# Запуск приложения
 python ./app.py
 ```
 
 ### Настройка Telegram-бота
 1. Создайте бота в @BotFather
 2. Получите token бота и id чата с ним
+
+### Поблагодарить автора
+[telegram-канал](https://t.me/junior_lair)
